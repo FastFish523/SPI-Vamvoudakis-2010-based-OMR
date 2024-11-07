@@ -10,7 +10,7 @@
 %   应当注意，加噪声后的输入只作用于系统状态更新，而不应该作用于权重更新过程中！！！
 
 %%  Simulation
-rng('default'); % Reset random number generator for reproducibility
+% rng('default'); % Reset random number generator for reproducibility
 close all;
 clear;
 clc;
@@ -33,8 +33,8 @@ global is_learning;
 
 
 % Initialize variables
-num_states = 6;
-num_centers = 6;
+num_states = 3;
+num_centers = 3;
 F1 = ones(num_centers,1);
 F2 = eye(num_centers);
 R = 1; % 大小可以决定值函数对于u和e的trade-off。过大可能导致不收敛
@@ -43,23 +43,24 @@ alpha2 = 1;
 is_learning = 1;
 Q = eye(num_states) * 1;
 
-z0=rand(num_states,1);
+x0=ones(num_states,1);
 W1=ones(num_centers,1)*1;
 W2=ones(num_centers,1);
 
 
 tvec = [];
 xmat = [];
+emat = [];
 umat = [];
 
 % Critic, actor weights
 W1_mat = [];
 W2_mat = [];
 
-t_learn = 480;
+t_learn = 280;
 t_sim = 20;
 
-x0_sim = [z0; W1; W2];
+x0_sim = [x0; W1; W2];
 tspan = [0, t_learn];
 [t, x] = ode45(@odefunct, tspan, x0_sim);
 
@@ -70,6 +71,7 @@ tvec = [    tvec
 % Store system state data
 xmat = [    xmat
     x(:,1:num_states)    ];
+
 
 % Store critic weights c
 W1_mat = [   W1_mat
@@ -88,9 +90,9 @@ W2
 
 is_learning = 0;
 
-z0=x(end,1:num_states)';
+x0=x(end,1:num_states)';
 
-x0_sim = [z0; W1; W2];
+x0_sim = [x0; W1; W2];
 tspan = [t_learn, t_learn+t_sim];
 [t, x] = ode45(@odefunct, tspan, x0_sim);
 
@@ -102,6 +104,9 @@ tvec = [    tvec
 xmat = [    xmat
     x(:,1:num_states)    ];
 
+% emat = xmat - exp(-0.01*tvec); 
+emat = xmat - 1./(0.01*tvec+1); 
+
 % Store critic weights c
 W1_mat = [   W1_mat
     x(:,num_states+1:num_states+num_centers)    ];
@@ -110,18 +115,18 @@ W1_mat = [   W1_mat
 W2_mat = [   W2_mat
     x(:,end-num_centers+1:end)    ];
 
-for k=1:size(W1_mat,1)
-    g = G(xmat(k,:));
-    dPhi = Derivative_Phi(xmat(k,:));    
-    u = -0.5 * inv(R) * g' * dPhi' * W1_mat(k,:)';
-    umat = [umat
-        u'];
-end
+% for k=1:size(W1_mat,1)
+%     g = G(xmat(k,:));
+%     dPhi = Derivative_Phi(xmat(k,:));    
+%     u = -0.5 * inv(R) * g' * dPhi' * W1_mat(k,:)';
+%     umat = [umat
+%         u'];
+% end
 
 % Plotting
-figure;
-plot(tvec, umat);
-title('u');
+% figure;
+% plot(tvec, umat);
+% title('u');
 
 figure;
 plot(tvec, W1_mat);
@@ -137,50 +142,33 @@ plot(tvec, xmat);
 title('System States');
 legend('Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6');
 
-function dPhi = Derivative_Phi(xs)
-dPhi=[2*xs(1),0,0,0,0,0;...
-%     xs(2),xs(1),0,0,0,0;...
-%     xs(3),0,xs(1),0,0,0;...
-%     xs(4),0,0,xs(1),0,0;...
-%     xs(5),0,0,0,xs(1),0;...
-%     xs(6),0,0,0,0,xs(1);...
-    0,2*xs(2),0,0,0,0;...
-%     0,xs(3),xs(2),0,0,0;...
-%     0,xs(4),0,xs(2),0,0;...
-%     0,xs(5),0,0,xs(2),0;...
-%     0,xs(6),0,0,0,xs(2);...
-    0,0,2*xs(3),0,0,0;...
-%     0,0,xs(4),xs(3),0,0;...
-%     0,0,xs(5),0,xs(3),0;...
-%     0,0,xs(6),0,0,xs(3);...
-    0,0,0,2*xs(4),0,0;...
-%     0,0,0,xs(5),xs(4),0;...
-%     0,0,0,xs(6),0,xs(4);...
-    0,0,0,0,2*xs(5),0;...
-%     0,0,0,0,xs(6),xs(5);...
-    0,0,0,0,0,2*xs(6)];
+figure;
+plot(tvec, emat);
+title('Tracking Errors');
+legend('e1', 'e2', 'e3', 'e4', 'e5', 'e6');
+
+function dPhi = Derivative_Phi(es)
+dPhi=[
+    2*es(1),0,0;...
+%     es(2),es(1),0;...
+%     es(3),0,es(1);...    
+    0,2*es(2),0;...
+%     0,es(3),es(2);...    
+    0,0,2*es(3)];
 end
 
 function f = F(xs)
-q=[xs(4);xs(5);xs(6)];
+q=[xs(1);xs(2);xs(3)];
 m=5;
 m_I=0.1125;
-L=0.14;
-C_t=0.3;
-R1=0.0635;
 cM=[m,0,0;...
     0,m,0;...
     0,0,m_I];
-cC=[0,m*xs(6),0;...
-    -m*xs(6),0,0;...
+cC=[0,m*xs(3),0;...
+    -m*xs(3),0,0;...
     0,0,0];
-F_theta=[cos(xs(3)), -sin(xs(3)), 0;...
-    sin(xs(3)), cos(xs(3)), 0;...
-    0,         0,         1];
-f1 = F_theta * q;
 f2=-inv(cM)*cC*q;
-f = [f1
-        f2];
+f = f2;
 end
 
 function g = G(xs)
@@ -197,8 +185,7 @@ cB=[1/2,1/2,-1;...
     L,L,L];
 g1=ones(3,3);
 g2=inv(cM)*cB*C_t/R1;
-g=[g1
-   g2];
+g = g2;
 end
 
 function xdot = odefunct(t,x)
@@ -224,12 +211,19 @@ W1 = x(num_states+1:end-num_centers);
 % Actor NN state variables
 W2 = x(end-num_centers+1:end);
 
+% x_r = exp(-0.01*t);
+% dx_r = -0.01*exp(-0.01*t);
+% x_r = sin(0.2*t);
+% dx_r = 0.2*cos(0.2*t);
+% es = xs - x_r;
+
 dPhi = Derivative_Phi(xs);
 g = G(xs);
 actor = -0.5 * inv(R) * g' * dPhi' * W2;
 %             actor = actor + (rand(size(actor)) - 0.5) * noise_coef;
 
-sigma2 = dPhi * (F(xs) + g *actor);
+sigma2 = dPhi * (F(xs) + g * actor);
+% sigma2 = dPhi * (F(xs) + g * actor - dx_r);
 normsigma2 = sigma2' * sigma2 + 1;
 mx = sigma2 / (sigma2' * sigma2 + 1)^2;
 W1Change = -alpha1 * (sigma2 / normsigma2^2) * (sigma2' * W1 + xs' * Q * xs + actor' * R * actor);
@@ -252,18 +246,12 @@ noise3 = ones(1,1) * exp(-0.001*t)*10*(sin(t)^2*cos(t) +...
 noise = [noise1;noise2;noise3];
 % noise = sin(1.12*t)^2;
 if is_learning
-    u = -0.5 * inv(R) * g' * dPhi' * W2 + noise;
+    u = -0.5 * inv(R) * g' * dPhi' * W2 +noise;
 else
     u = -0.5 * inv(R) * g' * dPhi' * W2;
 end
-dz = F(xs) + g * u;
-if is_learning
-    xdot = [dz
-        W1Change
-        W2Change];
-else
-    xdot = [dz
-        zeros(num_centers,1)
-        zeros(num_centers,1)];
-end
+dx = F(xs) + g * u;
+xdot = [dx
+    W1Change
+    W2Change];  % 权重收敛至真值后，继续求最优控制并不会改变权重
 end

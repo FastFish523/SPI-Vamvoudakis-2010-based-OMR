@@ -34,17 +34,17 @@ global is_learning;
 
 % Initialize variables
 num_states = 6;
-num_centers=21;
-F1 = ones(num_centers,1)*(-5);
-F2 = eye(num_centers)*10;
+num_centers = 6;
+F1 = ones(num_centers,1);
+F2 = eye(num_centers);
 R = 1; % 大小可以决定值函数对于u和e的trade-off。过大可能导致不收敛
-alpha1 = 5;
+alpha1 = 20;
 alpha2 = 1;
 is_learning = 1;
 Q = eye(num_states) * 1;
 
-z0=rand(num_states,1);
-W1=ones(num_centers,1);
+e0=rand(num_states,1);
+W1=ones(num_centers,1)*1;
 W2=ones(num_centers,1);
 
 
@@ -56,8 +56,12 @@ umat = [];
 W1_mat = [];
 W2_mat = [];
 
-x0_sim = [z0; W1; W2];
-tspan = [0, 80];
+t_learn = 480;
+t_sim = 20;
+
+
+x0_sim = [e0; W1; W2];
+tspan = [0, t_learn];
 [t, x] = ode45(@odefunct, tspan, x0_sim);
 
 % Store time data
@@ -85,10 +89,10 @@ W2
 
 is_learning = 0;
 
-z0=x(end,1:num_states)';
+e0=x(end,1:num_states)';
 
-x0_sim = [z0; W1; W2];
-tspan = [80, 120];
+x0_sim = [e0; W1; W2];
+tspan = [t_learn, t_learn+t_sim];
 [t, x] = ode45(@odefunct, tspan, x0_sim);
 
 % Store time data
@@ -107,46 +111,54 @@ W1_mat = [   W1_mat
 W2_mat = [   W2_mat
     x(:,end-num_centers+1:end)    ];
 
+for k=1:size(W1_mat,1)
+    g = G(xmat(k,:));
+    dPhi = Derivative_Phi(xmat(k,:));    
+    u = -0.5 * inv(R) * g' * dPhi' * W1_mat(k,:)';
+    umat = [umat
+        u'];
+end
+
 % Plotting
-% figure;
-% plot(1:totalIter, all_u);
-% title('u');
+figure;
+plot(tvec, umat);
+title('u');
 
 figure;
 plot(tvec, W1_mat);
 title('W1');
-legend('W11', 'W12', 'W13');
+legend('W11', 'W12', 'W13', 'W14', 'W15', 'W16');
 figure;
 plot(tvec, W2_mat);
 title('W2');
-legend('W21', 'W22', 'W23');
+legend('W21', 'W22', 'W23', 'W24', 'W25', 'W26');
 
 figure;
 plot(tvec, xmat);
 title('System States');
-legend('Z1', 'Z2');
+legend('Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6');
 
 function dPhi = Derivative_Phi(xs)
 dPhi=[2*xs(1),0,0,0,0,0;...
-    xs(2),xs(1),0,0,0,0;...
-    xs(3),0,xs(1),0,0,0;...
-    xs(4),0,0,xs(1),0,0;...
-    xs(5),0,0,0,xs(1),0;...
-    xs(6),0,0,0,0,xs(1);...
+%     xs(2),xs(1),0,0,0,0;...
+%     xs(3),0,xs(1),0,0,0;...
+%     xs(4),0,0,xs(1),0,0;...
+%     xs(5),0,0,0,xs(1),0;...
+%     xs(6),0,0,0,0,xs(1);...
     0,2*xs(2),0,0,0,0;...
-    0,xs(3),xs(2),0,0,0;...
-    0,xs(4),0,xs(2),0,0;...
-    0,xs(5),0,0,xs(2),0;...
-    0,xs(6),0,0,0,xs(2);...
+%     0,xs(3),xs(2),0,0,0;...
+%     0,xs(4),0,xs(2),0,0;...
+%     0,xs(5),0,0,xs(2),0;...
+%     0,xs(6),0,0,0,xs(2);...
     0,0,2*xs(3),0,0,0;...
-    0,0,xs(4),xs(3),0,0;...
-    0,0,xs(5),0,xs(3),0;...
-    0,0,xs(6),0,0,xs(3);...
+%     0,0,xs(4),xs(3),0,0;...
+%     0,0,xs(5),0,xs(3),0;...
+%     0,0,xs(6),0,0,xs(3);...
     0,0,0,2*xs(4),0,0;...
-    0,0,0,xs(5),xs(4),0;...
-    0,0,0,xs(6),0,xs(4);...
+%     0,0,0,xs(5),xs(4),0;...
+%     0,0,0,xs(6),0,xs(4);...
     0,0,0,0,2*xs(5),0;...
-    0,0,0,0,xs(6),xs(5);...
+%     0,0,0,0,xs(6),xs(5);...
     0,0,0,0,0,2*xs(6)];
 end
 
@@ -205,7 +217,7 @@ global num_states;
 global num_centers;
 global is_learning;
 
-xs = x(1:num_states);
+es = x(1:num_states);
 
 % Critic NN state variables
 W1 = x(num_states+1:end-num_centers);
@@ -213,7 +225,10 @@ W1 = x(num_states+1:end-num_centers);
 % Actor NN state variables
 W2 = x(end-num_centers+1:end);
 
-dPhi = Derivative_Phi(xs);
+x_r = sin(2*t);
+xs = es + x_r;
+
+dPhi = Derivative_Phi(es);
 g = G(xs);
 actor = -0.5 * inv(R) * g' * dPhi' * W2;
 %             actor = actor + (rand(size(actor)) - 0.5) * noise_coef;
@@ -226,10 +241,19 @@ W1Change = -alpha1 * (sigma2 / normsigma2^2) * (sigma2' * W1 + xs' * Q * xs + ac
 D1x = dPhi * g * inv(R) * g' * dPhi';
 W2Change = -alpha2 * ((F2 * W2 - F2 * W1) - 0.25 * D1x * W2 * mx' * W1);
 
-noise = ones(1,1) * exp(-0.001*t)*40*(sin(t)^2*cos(t) +...
+noise1 = ones(1,1) * exp(-0.001*t)*1*(sin(t)^2*cos(t) +...
     sin(2*t)^2*cos(0.1*t) +...
     sin(-1.2*t)^2*cos(0.5*t) + sin(t)^5 + sin(1.12*t)^2 +...
     cos(2.4*t)*sin(2.4*t)^3);
+noise2 = ones(1,1) * exp(-0.001*t)*5*(sin(t)^2*cos(t) +...
+    sin(2*t)^2*cos(0.1*t) +...
+    sin(-1.2*t)^2*cos(0.5*t) + sin(t)^5 + sin(1.12*t)^2 +...
+    cos(2.4*t)*sin(2.4*t)^3);
+noise3 = ones(1,1) * exp(-0.001*t)*10*(sin(t)^2*cos(t) +...
+    sin(2*t)^2*cos(0.1*t) +...
+    sin(-1.2*t)^2*cos(0.5*t) + sin(t)^5 + sin(1.12*t)^2 +...
+    cos(2.4*t)*sin(2.4*t)^3);
+noise = [noise1;noise2;noise3];
 % noise = sin(1.12*t)^2;
 if is_learning
     u = -0.5 * inv(R) * g' * dPhi' * W2 + noise;
